@@ -1,0 +1,154 @@
+\documentclass[acmsmall,nonacm]{acmart}
+\usepackage[UTF8,scheme=plain,fontset=fandol]{ctex}
+
+\settopmatter{printacmref=false,printccs=false,printfolios=true}
+\renewcommand{\abstractname}{摘要}
+\renewcommand{\refname}{参考资料}
+\renewcommand{\tablename}{表}
+
+\title{基于 Npcap 的本机以太网帧捕获实验}
+\author{姓名：待填写 \texorpdfstring{\quad}{\space}学号：待填写
+  \texorpdfstring{\quad}{\space}班级：待填写}
+\authorsaddresses{}
+\renewcommand{\shortauthors}{Npcap 抓包实验}
+
+\begin{document}
+
+\begin{abstract}
+\textbf{摘要：}本实验用 C++23 和 Npcap SDK 实现了一个 Windows 控制台抓包程序。
+程序枚举本机接口，打开选定接口，只在链路层格式为以太网时解析并显示源 MAC、目的 MAC、
+类型/长度字段及其后的第一个字节，不写入抓包文件。通过对本机默认网关执行两次
+IPv4 ping，共捕获四帧；源、目的地址的收发方向均与系统记录一致，
+类型字段和后一字节分别为 \texttt{0x0800} 和 \texttt{0x45}。
+\end{abstract}
+
+\maketitle
+
+\section{Npcap 捕获路径}
+
+Npcap 由 Windows 内核驱动和用户态库组成。对于本实验所用的网卡，
+内核中的 NPF 以 NDIS 6 轻量级过滤驱动（Lightweight Filter, LWF）的形式接入网络栈。
+它可以在内核中执行 Berkeley Packet Filter（BPF）过滤，并把接受的帧放入捕获缓冲区。
+用户态的 \texttt{Packet.dll} 与驱动交互，\texttt{wpcap.dll} 向程序提供 libpcap API。
+捕获缓冲区能批量交付帧，减少跨内核与用户态边界的读操作；缓冲区满时仍可丢帧
+\cite{npcap-internals,bpf}。
+
+\begin{center}
+\small
+\begin{tabular}{@{}ll@{}}
+\toprule
+层级 & 本实验的数据路径（自上而下） \\
+\midrule
+内核态 & 网卡的 NDIS 数据路径 $\rightarrow$ NPF 过滤与捕获缓冲 \\
+用户态 & \texttt{Packet.dll} $\rightarrow$ \texttt{wpcap.dll} $\rightarrow$ 本程序 \\
+显示 & 根据捕获长度解码 $\rightarrow$ 控制台表格 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{程序实现}
+
+\textbf{设备与读取。}
+用 \texttt{pcap\_findalldevs} 枚举网卡，复制名称和描述。\newline
+用 \texttt{pcap\_freealldevs} 释放原链表，再以设备名调用 \texttt{pcap\_open\_live}，
+设置捕获快照长度（snapshot length）为 64 字节、读超时为 200\,ms，不开启混杂模式。
+\texttt{pcap\_datalink} 必须返回 \texttt{DLT\_EN10MB}，避免把环回或原始
+802.11 头当作以太网头。若提供过滤条件，先用 \texttt{pcap\_compile} 编译，
+再用 \texttt{pcap\_setfilter} 安装。读取用 \texttt{pcap\_next\_ex}：
+成功时读一帧，返回 0 时继续等待，负值作为捕获异常报告；退出时自动调用
+\texttt{pcap\_close} \cite{npcap-api,npcap-read}。
+
+\textbf{边界与字节序。}
+偏移从 0 计数。MAC 地址按线序打印；多字节整数显式按大端拼接。
+Npcap 返回的缓冲区由库管理，必须在下一次读取前用完。
+解析只使用实际捕获的 \texttt{caplen}，不把原始帧长 \texttt{len} 当作可读长度。
+不足 14 字节的记录不输出并计数，恰好 14 字节时最后一列显示 \texttt{--}。
+
+\begin{table}[h]
+\caption{捕获数据内的字段偏移}
+\label{tab:offsets}
+\centering\small
+\begin{tabular}{@{}cll@{}}
+\toprule
+偏移 & 字段 & 解码与显示 \\
+\midrule
+0--5   & 目的 MAC & 六个十六进制字节 \\
+6--11  & 源 MAC & 六个十六进制字节 \\
+12--13 & 类型/长度 & \texttt{(byte[12] << 8) | byte[13]} \\
+14     & 字段后第一字节 & \texttt{0xNN}，缺失时为 \texttt{--} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+程序显示的是外层原值，不推测上层协议：若类型/长度值至多为 1500，它可以是
+IEEE 802.3 长度；若外层值为 \texttt{0x8100}，偏移 14 是 VLAN 标签控制信息的第一字节，
+并非内层协议首字节 \cite{ieee-numbers}。
+实现中，\texttt{capture.cpp} 管理运行库、设备和捕获句柄，
+\texttt{ethernet.hpp} 只解码字节，\texttt{main.cpp} 处理交互和显示。
+控制台分批刷新，空闲时按读超时刷新；64 字节快照限制拷贝量，但此工具不承诺高速链路下零丢包。
+
+\section{实机验证}
+
+\textbf{环境。} Windows 11 x64，Visual Studio 2026（MSVC 19.51），
+Npcap SDK 1.17，运行时 Npcap 1.60。已运行的驱动缺少标准目录中的
+\texttt{wpcap.dll}，因此本次验证将从同版本官方签名安装包提取的 x64 DLL
+放在可执行文件旁，未更改系统驱动或系统目录。
+
+\textbf{操作。} 用 \texttt{--list} 找到本次使用的 11 号接口
+（Remote NDIS Compatible Device），指定 \texttt{--interface 11 --count 4}，
+用 \texttt{--filter} 设置过滤条件 \texttt{"icmp and host GATEWAY"}。
+看到捕获提示后，在第二个终端执行 \texttt{ping -4 -n 2 GATEWAY}，
+其中 \texttt{GATEWAY} 替换为本机 IPv4 默认网关的地址。
+通过 Windows 的网卡配置和邻居表独立取得本机与网关的 MAC，
+与表~\ref{tab:observed} 的两种方向核对。四帧输出后程序自动退出，报告 0 帧短于以太网头。
+
+\begin{table}[h]
+\caption{控制台实测结果（四帧）}
+\label{tab:observed}
+\centering\small
+\begin{tabular}{@{}rllll@{}}
+\toprule
+序号 & 源 MAC & 目的 MAC & 类型/长度 & 后一字节 \\
+\midrule
+1 & \texttt{0E:10:02:EB:27:A9} & \texttt{56:F0:94:B2:7B:F2} & \texttt{0x0800} & \texttt{0x45} \\
+2 & \texttt{56:F0:94:B2:7B:F2} & \texttt{0E:10:02:EB:27:A9} & \texttt{0x0800} & \texttt{0x45} \\
+3 & \texttt{0E:10:02:EB:27:A9} & \texttt{56:F0:94:B2:7B:F2} & \texttt{0x0800} & \texttt{0x45} \\
+4 & \texttt{56:F0:94:B2:7B:F2} & \texttt{0E:10:02:EB:27:A9} & \texttt{0x0800} & \texttt{0x45} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{解释。} \texttt{0x0800} 是 IPv4 的 EtherType \cite{rfc894}。
+紧跟的 \texttt{0x45} 高四位为版本 4，低四位为 5 个 32 位字，
+即 20 字节的 IPv4 头；它不是 ICMP 负载的第一个字节 \cite{rfc791}。
+镜像的 MAC 对正确反映了请求与响应的方向。
+此外，实测选择环回接口时拒绝非以太网链路；非法过滤表达式报告编译错误；
+无匹配帧时按 Ctrl+C，程序也能正常返回并输出 0 帧。
+
+\section{结论}
+
+程序在 Windows 实机上走通了设备枚举、接口打开、实时读取和四项字段的显示。
+区分链路层类型、原始帧长和捕获长度，使程序既能显示普通 IPv4 帧，
+也不会误读其他链路格式或缺失字节。VLAN 与长度字段的解释基于报文布局，本次实机样本未覆盖这两类。
+
+\begin{thebibliography}{9}
+\bibitem{npcap-internals}
+Npcap. \emph{Npcap internals}. \url{https://npcap.com/guide/npcap-internals.html}
+\bibitem{bpf}
+Steven McCanne and Van Jacobson. 1993. \emph{The BSD Packet Filter: A New Architecture for
+User-level Packet Capture}. USENIX Winter. \url{https://www.usenix.org/legacy/publications/library/proceedings/sd93/mccanne.pdf}
+\bibitem{npcap-api}
+Npcap. \emph{pcap: Packet capture library}. \url{https://npcap.com/guide/wpcap/pcap.html}
+\bibitem{npcap-read}
+Npcap. \emph{pcap\_next\_ex: Read the next packet from a pcap\_t}.
+\url{https://npcap.com/guide/wpcap/pcap_next_ex.html}
+\bibitem{ieee-numbers}
+IANA. \emph{IEEE 802 Numbers: Ethertypes}. \url{https://www.iana.org/assignments/ieee-802-numbers}
+\bibitem{rfc894}
+Charles Hornig. 1984. \emph{A Standard for the Transmission of IP Datagrams over Ethernet Networks}.
+RFC 894. \url{https://www.rfc-editor.org/rfc/rfc894}
+\bibitem{rfc791}
+Jon Postel. 1981. \emph{Internet Protocol}. RFC 791. \url{https://www.rfc-editor.org/rfc/rfc791}
+\end{thebibliography}
+
+\end{document}

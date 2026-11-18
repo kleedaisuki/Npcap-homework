@@ -1,0 +1,5 @@
+/.temp/
+/build/
+/output/
+/external/npcap-sdk-*/
+/CMakeUserPresets.json
