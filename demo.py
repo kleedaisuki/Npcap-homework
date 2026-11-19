@@ -16,7 +16,9 @@ from typing import TextIO
 
 
 ROOT = Path(__file__).resolve().parent
-CAPTURE = ROOT / "build" / "Release" / "npcap-homework.exe"
+GCC_CAPTURE = ROOT / "build" / "gcc" / "npcap-homework.exe"
+MSVC_CAPTURE = ROOT / "build" / "Release" / "npcap-homework.exe"
+CAPTURE = GCC_CAPTURE if GCC_CAPTURE.is_file() else MSVC_CAPTURE
 ADAPTER = re.compile(r"^\s*\[(\d+)\] ([^\n]*)\n[ \t]+\\Device\\NPF_(\{[0-9A-F-]+\})$",
                      re.IGNORECASE | re.MULTILINE)
 MAC = r"[0-9A-F]{2}(?::[0-9A-F]{2}){5}"

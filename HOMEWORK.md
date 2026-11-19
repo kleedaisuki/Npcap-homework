@@ -18,7 +18,7 @@
 
 1. C++23
 2. Npcap SDK (libpcap API)
-3. CMake + MSVC
+3. CMake + MSYS2 GCC（MinGW）
 4. 控制台 TUI
 
 

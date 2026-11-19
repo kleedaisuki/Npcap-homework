@@ -10,22 +10,38 @@ Course submission URL: **[to be filled in]**.
 
 ## Build and run
 
-- Windows 10 or 11, Visual Studio with **Desktop development with C++**, and CMake
-  3.25 or later. Use a recent MSVC toolset with C++23 support. The lab was tested
-  with Visual Studio 2026 x64.
+- Windows 10 or 11, [MSYS2](https://www.msys2.org/docs/environments/), and a
+  native GCC toolchain with C++23, CMake 3.25 or later, and Ninja. Visual Studio
+  is not required. Use the UCRT64 shell for new installs; the GCC 16.2 MINGW64
+  toolchain already installed on the lab PC was used for verification.
 - Install the [Npcap runtime](https://npcap.com/#download) to run live captures.
   Download the [Npcap SDK 1.17](https://npcap.com/dist/npcap-sdk-1.17.zip)
   separately and extract it under `external/npcap-sdk-1.17` so that
   `external/npcap-sdk-1.17/Include/pcap.h` exists. For another location, pass
   `-DNPCAP_SDK_ROOT=<path>` to CMake. No Npcap binaries are redistributed here.
 
-```powershell
-cmake -S . -B build -G "Visual Studio 18 2026" -A x64
-cmake --build build --config Release
-.\build\Release\npcap-homework.exe
+For a fresh UCRT64 environment, install the tools in the MSYS2 UCRT64 shell:
+
+```bash
+pacman -S --needed mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja
 ```
 
-Select an Ethernet adapter by number. Enter at the empty prompt quits; Ctrl+C
+Run these from the project root in that shell, or in PowerShell if the
+environment's `bin` directory is already on `PATH`:
+
+```powershell
+cmake --preset msys2-gcc
+cmake --build --preset msys2-gcc
+python demo.py
+```
+
+The preset writes `build/gcc/npcap-homework.exe`, separate from previous MSVC
+builds. Use a fresh CMake cache when switching between UCRT64 and MINGW64.
+The executable loads the Npcap DLL at run time and does not require MinGW
+runtime DLLs on `PATH`. The Visual Studio generator remains an alternative.
+
+Run the executable without arguments and select an Ethernet adapter by number.
+Enter at the empty prompt quits; Ctrl+C
 ends a capture. If Npcap was installed with administrator-only capture, use an
 elevated terminal. An Npcap driver service without its user-mode DLL is
 insufficient: repair the runtime if the program cannot load `wpcap.dll`.
@@ -38,9 +54,9 @@ the captured snapshot, and decodes the first observed header. A responsive
 gateway yields 16 frames. Set `NO_COLOR=1` for plain-text output.
 
 ```powershell
-.\build\Release\npcap-homework.exe --list
+.\build\gcc\npcap-homework.exe --list
 # Example only: substitute your Ethernet adapter number and IPv4 gateway.
-.\build\Release\npcap-homework.exe --interface 3 --count 4 --filter "icmp and host 192.168.1.1"
+.\build\gcc\npcap-homework.exe --interface 3 --count 4 --filter "icmp and host 192.168.1.1"
 # In a second terminal after the capture banner appears:
 ping -4 -n 2 192.168.1.1
 ```

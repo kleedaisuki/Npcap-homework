@@ -89,8 +89,10 @@ IEEE 802.3 长度；若外层值为 \texttt{0x8100}，偏移 14 是 VLAN 标签�
 
 \section{实机验证}
 
-\textbf{环境。} Windows 11 x64，Visual Studio 2026（MSVC 19.51），
-Npcap SDK 1.17，运行时 Npcap 1.60。已运行的驱动缺少标准目录中的
+\textbf{环境。} Windows 11 x64，Npcap SDK 1.17，运行时 Npcap 1.60。
+表~\ref{tab:observed} 的原始样本由 MSVC 19.51 版取得。
+最终版本改用 MSYS2 MINGW64 的 GCC 16.2，通过 CMake 和 Ninja 构建；
+重新运行演示捕获 16 帧（收、发各 8 帧）。已运行的驱动缺少标准目录中的
 \texttt{wpcap.dll}，因此本次验证将从同版本官方签名安装包提取的 x64 DLL
 放在可执行文件旁，未更改系统驱动或系统目录。
 

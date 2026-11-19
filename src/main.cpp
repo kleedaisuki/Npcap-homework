@@ -144,15 +144,10 @@ void show_frames(pcap_t* capture, std::size_t limit, bool details)
     while (shown < limit && !stop.load(std::memory_order_relaxed)) {
         pcap_pkthdr* header = nullptr;
         const u_char* data = nullptr;
-        const auto status = pcap_next_ex(capture, &header, &data);
-        if (status == 0) {
+        if (!read_packet(capture, header, data)) {
             std::cout.flush();
             continue;
         }
-        if (status < 0)
-            throw std::runtime_error(std::string("pcap_next_ex: ") +
-                                     (status == PCAP_ERROR_BREAK ? "capture ended unexpectedly"
-                                                                 : pcap_geterr(capture)));
         const auto frame = decode_ethernet({data, header->caplen});
         if (!frame) {
             ++short_frames;
@@ -176,8 +171,7 @@ int run(std::span<char*> args)
         return 0;
     }
 
-    init_npcap();
-    std::cout << pcap_lib_version() << '\n';
+    std::cout << npcap_version() << '\n';
     const auto devices = list_devices();
     if (devices.empty())
         throw std::runtime_error("Npcap did not report any adapters.");

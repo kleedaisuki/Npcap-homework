@@ -1,0 +1,21 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "msys2-gcc",
+      "displayName": "MSYS2 MinGW GCC (Release)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/gcc",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_COMPILER": "g++"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "msys2-gcc",
+      "configurePreset": "msys2-gcc"
+    }
+  ]
+}
